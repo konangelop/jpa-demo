@@ -21,6 +21,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
      * Solves the classic N+1: loading all courses then accessing getDepartment().getName()
      */
     @EntityGraph(attributePaths = {"department"})
+    @Query("SELECT c FROM Course c")
     List<Course> findAllWithDepartment();
 
     /**
@@ -41,6 +42,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
      * EntityGraph with department + reviews (safe: only one collection).
      */
     @EntityGraph(attributePaths = {"department", "reviews"})
+    @Query("SELECT c FROM Course c")
     List<Course> findAllWithDepartmentAndReviews();
 
     /**

@@ -30,5 +30,6 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
      * Students with profile only.
      */
     @EntityGraph(attributePaths = {"profile"})
+    @Query("SELECT s FROM Student s")
     List<Student> findAllWithProfile();
 }

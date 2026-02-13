@@ -17,12 +17,14 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
      * With EntityGraph: 1 query with two JOINs.
      */
     @EntityGraph(attributePaths = {"course", "student"})
+    @Query("SELECT r FROM Review r")
     List<Review> findAllWithCourseAndStudent();
 
     /**
      * Even deeper: reviews → course → department, reviews → student
      */
     @EntityGraph(attributePaths = {"course", "course.department", "student"})
+    @Query("SELECT r FROM Review r")
     List<Review> findAllWithFullDetails();
 
     /**

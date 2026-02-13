@@ -43,6 +43,7 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
      * type = FETCH (default): Only these paths are eager; everything else is lazy.
      */
     @EntityGraph(attributePaths = {"courses"}, type = EntityGraph.EntityGraphType.FETCH)
+    @Query("SELECT d FROM Department d")
     List<Department> findAllWithCourses();
 
     /**
@@ -50,6 +51,7 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
      * Multiple paths = multiple JOINs in the generated SQL.
      */
     @EntityGraph(attributePaths = {"courses", "details"}, type = EntityGraph.EntityGraphType.FETCH)
+    @Query("SELECT d FROM Department d")
     List<Department> findAllWithCoursesAndDetails();
 
     /**
@@ -58,6 +60,7 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
      * it would still be EAGER here).
      */
     @EntityGraph(attributePaths = {"courses"}, type = EntityGraph.EntityGraphType.LOAD)
+    @Query("SELECT d FROM Department d")
     List<Department> findAllWithCoursesLoadGraph();
 
     // =========================================================================
