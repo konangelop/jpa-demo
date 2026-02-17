@@ -22,8 +22,9 @@ spring:
         format_sql: true
         # Generate statistics to see query counts
         generate_statistics: true
-        # Batch size for IN clause optimization
-        default_batch_fetch_size: 16
+        # Batch size disabled so N+1 problem is clearly visible in demos.
+        # Uncomment to see how batch fetching reduces (but doesn't eliminate) N+1:
+        # default_batch_fetch_size: 16
     defer-datasource-initialization: true
 
   sql:

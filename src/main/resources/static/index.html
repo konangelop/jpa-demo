@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JPA N+1 Demo Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; line-height: 1.6; }
+
+        header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: #fff; padding: 2.5rem 2rem 2rem; text-align: center; }
+        header h1 { font-size: 1.8rem; margin-bottom: 0.25rem; letter-spacing: -0.5px; }
+        header p { opacity: 0.75; font-size: 0.9rem; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+        /* Navigation buttons */
+        .btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.6rem; margin-bottom: 1.5rem; }
+        .btn-grid button {
+            padding: 0.65rem 0.8rem; border: 2px solid #1a1a2e; border-radius: 8px;
+            background: #fff; color: #1a1a2e; font-size: 0.8rem; font-weight: 600;
+            cursor: pointer; transition: all 0.15s; text-align: left; line-height: 1.3;
+        }
+        .btn-grid button:hover { background: #1a1a2e; color: #fff; }
+        .btn-grid button.active { background: #1a1a2e; color: #fff; }
+        .btn-grid button:disabled { opacity: 0.5; cursor: wait; }
+        .btn-grid button small { font-weight: 400; opacity: 0.7; }
+
+        /* Scenario wrapper */
+        .scenario-block { margin-bottom: 2rem; }
+        .scenario-header { font-size: 1.15rem; font-weight: 700; color: #1a1a2e; padding-bottom: 0.4rem; border-bottom: 2px solid #1a1a2e; margin-bottom: 1rem; }
+
+        /* Entity code section */
+        .entity-section { background: #fff; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .entity-section h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 0.6rem; }
+
+        /* Side-by-side grid */
+        .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .side-by-side.triple { grid-template-columns: 1fr 1fr 1fr; }
+        .side-by-side.single { grid-template-columns: 1fr; max-width: 600px; }
+        @media (max-width: 860px) { .side-by-side, .side-by-side.triple { grid-template-columns: 1fr; } }
+
+        /* Cards */
+        .card { background: #fff; border-radius: 10px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-left: 5px solid #ccc; display: flex; flex-direction: column; }
+        .card.problem { border-left-color: #e74c3c; }
+        .card.solution { border-left-color: #27ae60; }
+        .card.neutral { border-left-color: #3498db; }
+
+        .card .card-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #999; margin-bottom: 0.3rem; font-weight: 600; }
+        .card .card-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .card .card-desc { font-size: 0.82rem; color: #666; margin-bottom: 0.75rem; }
+
+        /* Stats row */
+        .stats-row { display: flex; gap: 1.5rem; margin-bottom: 0.75rem; }
+        .stat { text-align: center; }
+        .stat .val { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+        .stat .lbl { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
+        .val.bad { color: #e74c3c; }
+        .val.good { color: #27ae60; }
+        .val.info { color: #3498db; }
+
+        /* Code blocks */
+        .code-section { margin-top: auto; }
+        .code-section details { margin-top: 0.5rem; }
+        .code-section summary {
+            font-size: 0.75rem; font-weight: 600; color: #555; cursor: pointer;
+            padding: 0.3rem 0; user-select: none; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .code-section summary:hover { color: #1a1a2e; }
+        pre {
+            background: #1e1e2e; color: #cdd6f4; padding: 0.9rem; border-radius: 6px;
+            font-size: 0.75rem; line-height: 1.55; overflow-x: auto; margin-top: 0.4rem;
+            font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+        }
+        pre .kw { color: #cba6f7; }
+        pre .ann { color: #f9e2af; }
+        pre .str { color: #a6e3a1; }
+        pre .cmt { color: #6c7086; font-style: italic; }
+        pre .type { color: #89b4fa; }
+        pre .num { color: #fab387; }
+        pre .trigger { color: #f38ba8; font-weight: bold; }
+        pre .sql-kw { color: #89b4fa; font-weight: bold; }
+        pre .sql-tbl { color: #f9e2af; }
+        pre .sql-col { color: #cdd6f4; }
+        pre .sql-cmt { color: #6c7086; font-style: italic; }
+        pre .sql-rep { color: #f38ba8; font-style: italic; }
+
+        .result-count { font-size: 0.78rem; color: #aaa; margin-top: 0.5rem; }
+        .loading { text-align: center; padding: 3rem; color: #888; font-size: 0.95rem; }
+        .error { background: #ffeaea; color: #c0392b; padding: 1rem; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>JPA N+1 Query Problem &mdash; Demo Dashboard</h1>
+        <p>Side-by-side comparison of the N+1 problem, code that triggers it, generated SQL, and EntityGraph solutions</p>
+    </header>
+    <div class="container">
+        <div class="btn-grid">
+            <button onclick="load('compare/departments', 'departments', this)">1. OneToMany<br><small>Department &rarr; Courses</small></button>
+            <button onclick="load('compare/courses', 'courses', this)">2. ManyToOne<br><small>Course &rarr; Department</small></button>
+            <button onclick="load('compare/reviews', 'reviews', this)">3. Dual ManyToOne<br><small>Review &rarr; Course + Student</small></button>
+            <button onclick="load('compare/students', 'students', this)">4. ManyToMany<br><small>Student &rarr; Courses</small></button>
+            <button onclick="load('compare/departments-full', 'deptFull', this)">5. Multiple Assoc.<br><small>Dept &rarr; Courses + Details</small></button>
+            <button onclick="load('compare/fetch-vs-load', 'fetchLoad', this)">6. FETCH vs LOAD<br><small>Graph type comparison</small></button>
+            <button onclick="load('nested-entitygraph', 'nested', this)">7. Nested Graph<br><small>Deep EntityGraph</small></button>
+            <button onclick="loadAll(this)">Run All Scenarios</button>
+        </div>
+        <div id="results"></div>
+    </div>
+
+<script>
+const resultsDiv = document.getElementById('results');
+const BASE = '/api/demo/';
+
+// ── Scenario metadata: entity code, repo code, SQL logs ──
+
+const SCENARIOS = {
+departments: {
+    title: 'Scenario 1: @OneToMany &mdash; Department &rarr; Courses',
+    entity: `<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Department</span> {
+
+    <span class="ann">@Id</span> <span class="ann">@GeneratedValue</span>(strategy = GenerationType.IDENTITY)
+    <span class="kw">private</span> <span class="type">Long</span> id;
+
+    <span class="kw">private</span> <span class="type">String</span> name;
+
+    <span class="cmt">// OneToMany: LAZY by default &rarr; triggers N+1 when accessed</span>
+    <span class="ann">@OneToMany</span>(mappedBy = <span class="str">"department"</span>,
+               cascade = CascadeType.ALL,
+               orphanRemoval = <span class="kw">true</span>)
+    <span class="kw">private</span> <span class="type">List&lt;Course&gt;</span> courses = <span class="kw">new</span> ArrayList&lt;&gt;();
+}`,
+    cards: {
+        problem_nplus1: {
+            repo: `<span class="cmt">// Inherited from JpaRepository &mdash; no graph attached</span>
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAll</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository.<span class="kw">findAll</span>();
+
+depts.stream().map(d -&gt; <span class="kw">new</span> <span class="type">DepartmentDto</span>(
+    d.getId(), d.getName(), d.getDescription(),
+    <span class="trigger">d.getCourses()</span>.stream()  <span class="cmt">// &larr; TRIGGER: lazy load per dept!</span>
+        .map(c -&gt; <span class="kw">new</span> <span class="type">CourseSimpleDto</span>(...))
+        .toList(),
+    <span class="kw">null</span>
+))`,
+            sql: `<span class="sql-cmt">-- Query 1: load all departments</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.id, d.name, d.description</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d;
+
+<span class="sql-cmt">-- Query 2..6: one per department (N=5)</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.id, c.title, c.credits, c.department_id</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">courses</span> c
+<span class="sql-kw">WHERE</span> c.department_id = <span class="num">?</span>;
+<span class="sql-rep">... repeated 5 times (once per department)</span>
+
+<span class="sql-cmt">-- Total: 1 + N = 6 queries</span>`
+        },
+        solution_entitygraph: {
+            repo: `<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"courses"</span>},
+             type = EntityGraphType.FETCH)
+<span class="ann">@Query</span>(<span class="str">"SELECT d FROM Department d"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCourses</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository.<span class="kw">findAllWithCourses</span>();
+
+depts.stream().map(d -&gt; <span class="kw">new</span> <span class="type">DepartmentDto</span>(
+    d.getId(), d.getName(), d.getDescription(),
+    d.getCourses().stream()  <span class="cmt">// &larr; already loaded, no extra query</span>
+        .map(c -&gt; <span class="kw">new</span> <span class="type">CourseSimpleDto</span>(...))
+        .toList(),
+    <span class="kw">null</span>
+))`,
+            sql: `<span class="sql-cmt">-- Single query: LEFT JOIN fetches everything</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.id, d.name, d.description,
+       c.id, c.title, c.credits, c.department_id</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c
+    <span class="sql-kw">ON</span> d.id = c.department_id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        },
+        solution_join_fetch: {
+            repo: `<span class="ann">@Query</span>(<span class="str">"SELECT DISTINCT d FROM Department d LEFT JOIN FETCH d.courses"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCoursesJoinFetch</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository.<span class="kw">findAllWithCoursesJoinFetch</span>();
+<span class="cmt">// Same result as EntityGraph &mdash; JPQL-based alternative</span>`,
+            sql: `<span class="sql-cmt">-- Single query via JPQL JOIN FETCH</span>
+<span class="sql-kw">SELECT DISTINCT</span>
+    <span class="sql-col">d.id, d.name, d.description,
+    c.id, c.title, c.credits, c.department_id</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c
+    <span class="sql-kw">ON</span> d.id = c.department_id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        }
+    }
+},
+
+courses: {
+    title: 'Scenario 2: @ManyToOne &mdash; Course &rarr; Department',
+    entity: `<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Course</span> {
+
+    <span class="ann">@Id</span> <span class="ann">@GeneratedValue</span>(strategy = GenerationType.IDENTITY)
+    <span class="kw">private</span> <span class="type">Long</span> id;
+
+    <span class="kw">private</span> <span class="type">String</span> title;
+
+    <span class="cmt">// ManyToOne: default is EAGER! We set LAZY to demonstrate N+1</span>
+    <span class="ann">@ManyToOne</span>(fetch = FetchType.LAZY)
+    <span class="ann">@JoinColumn</span>(name = <span class="str">"department_id"</span>, nullable = <span class="kw">false</span>)
+    <span class="kw">private</span> <span class="type">Department</span> department;
+}`,
+    cards: {
+        problem_nplus1: {
+            repo: `<span class="cmt">// Inherited from JpaRepository</span>
+<span class="type">List&lt;Course&gt;</span> <span class="kw">findAll</span>();`,
+            service: `<span class="type">List&lt;Course&gt;</span> courses = courseRepository.<span class="kw">findAll</span>();
+
+courses.stream().map(c -&gt; <span class="kw">new</span> <span class="type">CourseDto</span>(
+    c.getId(), c.getTitle(), c.getDescription(), c.getCredits(),
+    <span class="kw">new</span> <span class="type">DepartmentSimpleDto</span>(
+        <span class="trigger">c.getDepartment()</span>.getId(),  <span class="cmt">// &larr; TRIGGER: proxy init</span>
+        <span class="trigger">c.getDepartment()</span>.getName(),
+        <span class="trigger">c.getDepartment()</span>.getDescription()
+    ), ...
+))`,
+            sql: `<span class="sql-cmt">-- Query 1: load all 16 courses</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.id, c.title, c.description, c.credits, c.department_id</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">courses</span> c;
+
+<span class="sql-cmt">-- Queries 2..6: load each distinct department</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.id, d.name, d.description</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">WHERE</span> d.id = <span class="num">?</span>;
+<span class="sql-rep">... repeated for each unique department</span>
+<span class="sql-cmt">-- (Hibernate L1 cache deduplicates: ~6 queries, not 17)</span>`
+        },
+        solution_entitygraph: {
+            repo: `<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"department"</span>})
+<span class="ann">@Query</span>(<span class="str">"SELECT c FROM Course c"</span>)
+<span class="type">List&lt;Course&gt;</span> <span class="kw">findAllWithDepartment</span>();`,
+            service: `<span class="type">List&lt;Course&gt;</span> courses = courseRepository.<span class="kw">findAllWithDepartment</span>();
+
+courses.stream().map(c -&gt; <span class="kw">new</span> <span class="type">CourseDto</span>(
+    c.getId(), c.getTitle(), c.getDescription(), c.getCredits(),
+    <span class="kw">new</span> <span class="type">DepartmentSimpleDto</span>(
+        c.getDepartment().getId(),  <span class="cmt">// &larr; already loaded</span>
+        c.getDepartment().getName(), ...
+    ), ...
+))`,
+            sql: `<span class="sql-cmt">-- Single query: JOIN loads department inline</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.id, c.title, c.description, c.credits,
+       d.id, d.name, d.description</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">courses</span> c
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">departments</span> d
+    <span class="sql-kw">ON</span> c.department_id = d.id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        }
+    }
+},
+
+reviews: {
+    title: 'Scenario 3: Dual @ManyToOne &mdash; Review &rarr; Course + Student',
+    entity: `<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Review</span> {
+
+    <span class="ann">@Id</span> <span class="ann">@GeneratedValue</span>(strategy = GenerationType.IDENTITY)
+    <span class="kw">private</span> <span class="type">Long</span> id;
+
+    <span class="kw">private</span> <span class="type">String</span> content;
+    <span class="kw">private</span> <span class="type">Integer</span> rating;
+
+    <span class="cmt">// TWO @ManyToOne LAZY associations &rarr; double N+1 risk</span>
+    <span class="ann">@ManyToOne</span>(fetch = FetchType.LAZY)
+    <span class="ann">@JoinColumn</span>(name = <span class="str">"course_id"</span>)
+    <span class="kw">private</span> <span class="type">Course</span> course;
+
+    <span class="ann">@ManyToOne</span>(fetch = FetchType.LAZY)
+    <span class="ann">@JoinColumn</span>(name = <span class="str">"student_id"</span>)
+    <span class="kw">private</span> <span class="type">Student</span> student;
+}`,
+    cards: {
+        problem_nplus1: {
+            repo: `<span class="cmt">// Inherited from JpaRepository</span>
+<span class="type">List&lt;Review&gt;</span> <span class="kw">findAll</span>();`,
+            service: `<span class="type">List&lt;Review&gt;</span> reviews = reviewRepository.<span class="kw">findAll</span>();
+
+reviews.stream().map(r -&gt; <span class="kw">new</span> <span class="type">ReviewDto</span>(
+    r.getId(), r.getContent(), r.getRating(),
+    <span class="trigger">r.getCourse()</span>.getTitle(),      <span class="cmt">// &larr; N queries for course</span>
+    <span class="trigger">r.getStudent()</span>.getFirstName()  <span class="cmt">// &larr; N queries for student</span>
+))`,
+            sql: `<span class="sql-cmt">-- Query 1: load all 20 reviews</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">r.id, r.content, r.rating, r.course_id, r.student_id</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">reviews</span> r;
+
+<span class="sql-cmt">-- N queries for courses (deduplicated by L1 cache)</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.id, c.title, ...</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">WHERE</span> c.id = <span class="num">?</span>;
+<span class="sql-rep">... repeated for each distinct course</span>
+
+<span class="sql-cmt">-- N queries for students</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">s.id, s.first_name, ...</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">students</span> s <span class="sql-kw">WHERE</span> s.id = <span class="num">?</span>;
+<span class="sql-rep">... repeated for each distinct student</span>
+
+<span class="sql-cmt">-- Total: 1 + N(courses) + N(students)</span>`
+        },
+        solution_entitygraph: {
+            repo: `<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"course"</span>, <span class="str">"student"</span>})
+<span class="ann">@Query</span>(<span class="str">"SELECT r FROM Review r"</span>)
+<span class="type">List&lt;Review&gt;</span> <span class="kw">findAllWithCourseAndStudent</span>();`,
+            service: `<span class="type">List&lt;Review&gt;</span> reviews = reviewRepository.<span class="kw">findAllWithCourseAndStudent</span>();
+
+reviews.stream().map(r -&gt; <span class="kw">new</span> <span class="type">ReviewDto</span>(
+    r.getId(), r.getContent(), r.getRating(),
+    r.getCourse().getTitle(),      <span class="cmt">// &larr; already loaded</span>
+    r.getStudent().getFirstName()  <span class="cmt">// &larr; already loaded</span>
+))`,
+            sql: `<span class="sql-cmt">-- Single query: two JOINs fetch both associations</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">r.id, r.content, r.rating,
+       c.id, c.title,
+       s.id, s.first_name, s.last_name</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">reviews</span> r
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> r.course_id = c.id
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">students</span> s <span class="sql-kw">ON</span> r.student_id = s.id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        }
+    }
+},
+
+students: {
+    title: 'Scenario 4: @ManyToMany &mdash; Student &rarr; Courses',
+    entity: `<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Student</span> {
+
+    <span class="ann">@Id</span> <span class="ann">@GeneratedValue</span>(strategy = GenerationType.IDENTITY)
+    <span class="kw">private</span> <span class="type">Long</span> id;
+
+    <span class="kw">private</span> <span class="type">String</span> firstName, lastName, email;
+
+    <span class="cmt">// ManyToMany inverse side &mdash; uses Set, not List</span>
+    <span class="ann">@ManyToMany</span>(mappedBy = <span class="str">"students"</span>)
+    <span class="kw">private</span> <span class="type">Set&lt;Course&gt;</span> courses = <span class="kw">new</span> HashSet&lt;&gt;();
+}
+
+<span class="cmt">// Owning side in Course.java:</span>
+<span class="ann">@ManyToMany</span>
+<span class="ann">@JoinTable</span>(name = <span class="str">"course_students"</span>,
+    joinColumns = <span class="ann">@JoinColumn</span>(name = <span class="str">"course_id"</span>),
+    inverseJoinColumns = <span class="ann">@JoinColumn</span>(name = <span class="str">"student_id"</span>))
+<span class="kw">private</span> <span class="type">Set&lt;Student&gt;</span> students = <span class="kw">new</span> HashSet&lt;&gt;();`,
+    cards: {
+        problem_nplus1: {
+            repo: `<span class="cmt">// Inherited from JpaRepository</span>
+<span class="type">List&lt;Student&gt;</span> <span class="kw">findAll</span>();`,
+            service: `<span class="type">List&lt;Student&gt;</span> students = studentRepository.<span class="kw">findAll</span>();
+
+students.stream().map(s -&gt; <span class="kw">new</span> <span class="type">StudentDto</span>(
+    s.getId(), s.getFirstName(), s.getLastName(), s.getEmail(),
+    <span class="kw">null</span>,
+    <span class="trigger">s.getCourses()</span>.stream()  <span class="cmt">// &larr; TRIGGER: join table query per student</span>
+        .map(c -&gt; <span class="kw">new</span> <span class="type">CourseSimpleDto</span>(...))
+        .toList()
+))`,
+            sql: `<span class="sql-cmt">-- Query 1: load all 8 students</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">s.id, s.first_name, s.last_name, s.email</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">students</span> s;
+
+<span class="sql-cmt">-- Queries 2..9: join table + courses per student</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.id, c.title, c.credits</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">course_students</span> cs
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> cs.course_id = c.id
+<span class="sql-kw">WHERE</span> cs.student_id = <span class="num">?</span>;
+<span class="sql-rep">... repeated 8 times (once per student)</span>
+
+<span class="sql-cmt">-- Total: 1 + N = 9 queries</span>`
+        },
+        solution_entitygraph: {
+            repo: `<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"courses"</span>})
+<span class="ann">@Query</span>(<span class="str">"SELECT DISTINCT s FROM Student s"</span>)
+<span class="type">List&lt;Student&gt;</span> <span class="kw">findAllWithCourses</span>();`,
+            service: `<span class="type">List&lt;Student&gt;</span> students = studentRepository.<span class="kw">findAllWithCourses</span>();
+
+students.stream().map(s -&gt; <span class="kw">new</span> <span class="type">StudentDto</span>(
+    s.getId(), s.getFirstName(), s.getLastName(), s.getEmail(),
+    <span class="kw">null</span>,
+    s.getCourses().stream()  <span class="cmt">// &larr; already loaded via join</span>
+        .map(c -&gt; <span class="kw">new</span> <span class="type">CourseSimpleDto</span>(...))
+        .toList()
+))`,
+            sql: `<span class="sql-cmt">-- Single query: joins through the pivot table</span>
+<span class="sql-kw">SELECT DISTINCT</span>
+    <span class="sql-col">s.id, s.first_name, s.last_name, s.email,
+    c.id, c.title, c.credits</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">students</span> s
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">course_students</span> cs <span class="sql-kw">ON</span> s.id = cs.student_id
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> cs.course_id = c.id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        }
+    }
+},
+
+deptFull: {
+    title: 'Scenario 5: Multiple Associations &mdash; Department &rarr; Courses + Details',
+    entity: `<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Department</span> {
+
+    <span class="ann">@OneToMany</span>(mappedBy = <span class="str">"department"</span>, cascade = CascadeType.ALL)
+    <span class="kw">private</span> <span class="type">List&lt;Course&gt;</span> courses = <span class="kw">new</span> ArrayList&lt;&gt;();
+
+    <span class="cmt">// @OneToOne with shared PK via @MapsId on DepartmentDetails</span>
+    <span class="ann">@OneToOne</span>(mappedBy = <span class="str">"department"</span>, cascade = CascadeType.ALL,
+             fetch = FetchType.LAZY, optional = <span class="kw">false</span>)
+    <span class="kw">private</span> <span class="type">DepartmentDetails</span> details;
+}
+
+<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">DepartmentDetails</span> {
+    <span class="ann">@Id</span> <span class="kw">private</span> <span class="type">Long</span> id;  <span class="cmt">// shared PK</span>
+
+    <span class="ann">@OneToOne</span>(fetch = FetchType.LAZY)
+    <span class="ann">@MapsId</span>
+    <span class="ann">@JoinColumn</span>(name = <span class="str">"department_id"</span>)
+    <span class="kw">private</span> <span class="type">Department</span> department;
+
+    <span class="kw">private</span> <span class="type">String</span> building;
+    <span class="kw">private</span> <span class="type">Double</span> budget;
+    <span class="kw">private</span> <span class="type">String</span> headOfDepartment;
+}`,
+    cards: {
+        problem_double_nplus1: {
+            repo: `<span class="cmt">// Inherited findAll() &mdash; no graph</span>
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAll</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository.<span class="kw">findAll</span>();
+
+depts.stream().map(d -&gt; <span class="kw">new</span> <span class="type">DepartmentDto</span>(
+    d.getId(), d.getName(), d.getDescription(),
+    <span class="trigger">d.getCourses()</span>.stream()...  <span class="cmt">// &larr; N queries for courses</span>
+    <span class="trigger">d.getDetails()</span> != <span class="kw">null</span> ?    <span class="cmt">// &larr; N queries for details</span>
+        <span class="kw">new</span> <span class="type">DepartmentDetailsDto</span>(
+            <span class="trigger">d.getDetails()</span>.getBuilding(), ...
+        ) : <span class="kw">null</span>
+))`,
+            sql: `<span class="sql-cmt">-- Query 1: all departments</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.id, d.name, d.description</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d;
+
+<span class="sql-cmt">-- N queries for courses</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">c.*</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">WHERE</span> c.department_id = <span class="num">?</span>;
+<span class="sql-rep">... repeated 5 times</span>
+
+<span class="sql-cmt">-- N queries for details</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">dd.*</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">department_details</span> dd <span class="sql-kw">WHERE</span> dd.department_id = <span class="num">?</span>;
+<span class="sql-rep">... repeated 5 times</span>
+
+<span class="sql-cmt">-- Total: 1 + 2N = 11 queries</span>`
+        },
+        solution_multi_entitygraph: {
+            repo: `<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"courses"</span>, <span class="str">"details"</span>},
+             type = EntityGraphType.FETCH)
+<span class="ann">@Query</span>(<span class="str">"SELECT d FROM Department d"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCoursesAndDetails</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository
+    .<span class="kw">findAllWithCoursesAndDetails</span>();
+<span class="cmt">// Both courses and details already loaded &mdash; zero extra queries</span>`,
+            sql: `<span class="sql-cmt">-- Single query: two LEFT JOINs</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.id, d.name, d.description,
+       c.id, c.title, c.credits,
+       dd.department_id, dd.building, dd.budget,
+       dd.head_of_department</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> d.id = c.department_id
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">department_details</span> dd <span class="sql-kw">ON</span> d.id = dd.department_id;
+
+<span class="sql-cmt">-- Total: 1 query</span>`
+        }
+    }
+},
+
+fetchLoad: {
+    title: 'Scenario 6: FETCH vs LOAD Graph Types',
+    entity: `<span class="cmt">// FETCH graph: attributes IN the graph &rarr; EAGER</span>
+<span class="cmt">//              attributes NOT in the graph &rarr; LAZY (ignores entity annotation)</span>
+<span class="cmt">// LOAD graph:  attributes IN the graph &rarr; EAGER</span>
+<span class="cmt">//              attributes NOT in the graph &rarr; use entity-defined FetchType</span>
+
+<span class="ann">@Entity</span>
+<span class="kw">public class</span> <span class="type">Department</span> {
+
+    <span class="ann">@OneToMany</span>(mappedBy = <span class="str">"department"</span>)       <span class="cmt">// default LAZY</span>
+    <span class="kw">private</span> <span class="type">List&lt;Course&gt;</span> courses;
+
+    <span class="ann">@OneToOne</span>(mappedBy = <span class="str">"department"</span>,
+             fetch = FetchType.LAZY)           <span class="cmt">// explicit LAZY</span>
+    <span class="kw">private</span> <span class="type">DepartmentDetails</span> details;
+}`,
+    cards: {
+        fetch_graph: {
+            repo: `<span class="cmt">// EntityGraphType.FETCH: only "courses" is eager</span>
+<span class="cmt">// "details" becomes LAZY regardless of entity annotation</span>
+<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"courses"</span>},
+             type = EntityGraphType.<span class="kw">FETCH</span>)
+<span class="ann">@Query</span>(<span class="str">"SELECT d FROM Department d"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCourses</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository.<span class="kw">findAllWithCourses</span>();
+<span class="cmt">// courses loaded &mdash; 1 query so far</span>
+
+depts.forEach(d -&gt; {
+    <span class="trigger">d.getDetails()</span>.getBuilding();  <span class="cmt">// &larr; extra query! FETCH made it LAZY</span>
+});
+<span class="cmt">// Total: 1 + N(details) queries</span>`,
+            sql: `<span class="sql-cmt">-- Query 1: departments + courses (in graph)</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.*, c.*</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> d.id = c.department_id;
+
+<span class="sql-cmt">-- Queries 2..6: details NOT in graph &rarr; forced LAZY by FETCH type</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">dd.*</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">department_details</span> dd
+<span class="sql-kw">WHERE</span> dd.department_id = <span class="num">?</span>;
+<span class="sql-rep">... repeated per department when accessed</span>`
+        },
+        load_graph: {
+            repo: `<span class="cmt">// EntityGraphType.LOAD: only "courses" is eager</span>
+<span class="cmt">// "details" uses entity annotation (FetchType.LAZY)</span>
+<span class="ann">@EntityGraph</span>(attributePaths = {<span class="str">"courses"</span>},
+             type = EntityGraphType.<span class="kw">LOAD</span>)
+<span class="ann">@Query</span>(<span class="str">"SELECT d FROM Department d"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCoursesLoadGraph</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository
+    .<span class="kw">findAllWithCoursesLoadGraph</span>();
+<span class="cmt">// courses loaded, details stays LAZY (same as entity annotation)</span>
+<span class="cmt">// If details had @OneToOne(fetch=EAGER), LOAD would keep it EAGER</span>`,
+            sql: `<span class="sql-cmt">-- Query 1: departments + courses (in graph)</span>
+<span class="sql-kw">SELECT</span> <span class="sql-col">d.*, c.*</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c <span class="sql-kw">ON</span> d.id = c.department_id;
+
+<span class="sql-cmt">-- details not accessed &rarr; no extra queries</span>
+<span class="sql-cmt">-- Key difference: LOAD respects entity FetchType</span>
+<span class="sql-cmt">-- FETCH overrides everything to LAZY</span>`
+        }
+    }
+},
+
+nested: {
+    title: 'Scenario 7: Nested EntityGraph &mdash; 3 Levels Deep',
+    entity: `<span class="cmt">// 3-level relationship chain:</span>
+<span class="cmt">// Department &rarr; courses &rarr; students (via join table)</span>
+
+<span class="ann">@Entity</span> <span class="type">Department</span> {
+    <span class="ann">@OneToMany</span>(mappedBy = <span class="str">"department"</span>)
+    <span class="type">List&lt;Course&gt;</span> courses;
+}
+<span class="ann">@Entity</span> <span class="type">Course</span> {
+    <span class="ann">@ManyToMany</span>
+    <span class="ann">@JoinTable</span>(name = <span class="str">"course_students"</span>)
+    <span class="type">Set&lt;Student&gt;</span> students;
+}`,
+    cards: {
+        single: {
+            repo: `<span class="cmt">// Dot-notation in attributePaths for nested graphs</span>
+<span class="ann">@EntityGraph</span>(attributePaths = {
+    <span class="str">"courses"</span>,
+    <span class="str">"courses.students"</span>  <span class="cmt">// &larr; 2nd level: Course &rarr; Students</span>
+})
+<span class="ann">@Query</span>(<span class="str">"SELECT DISTINCT d FROM Department d"</span>)
+<span class="type">List&lt;Department&gt;</span> <span class="kw">findAllWithCoursesAndStudents</span>();`,
+            service: `<span class="type">List&lt;Department&gt;</span> depts = departmentRepository
+    .<span class="kw">findAllWithCoursesAndStudents</span>();
+
+depts.stream().map(d -&gt; {
+    d.getCourses().stream().map(c -&gt; {
+        c.getStudents().stream()  <span class="cmt">// &larr; all 3 levels already loaded</span>
+            .map(s -&gt; s.getFirstName() + <span class="str">" "</span> + s.getLastName())
+    })
+})`,
+            sql: `<span class="sql-cmt">-- Single query: 3-level JOIN through pivot table</span>
+<span class="sql-kw">SELECT DISTINCT</span>
+    <span class="sql-col">d.id, d.name, d.description,
+    c.id, c.title, c.credits,
+    s.id, s.first_name, s.last_name, s.email</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">departments</span> d
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">courses</span> c
+    <span class="sql-kw">ON</span> d.id = c.department_id
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">course_students</span> cs
+    <span class="sql-kw">ON</span> c.id = cs.course_id
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">students</span> s
+    <span class="sql-kw">ON</span> cs.student_id = s.id;
+
+<span class="sql-cmt">-- Total: 1 query for all 3 levels</span>`
+        }
+    }
+}
+};
+
+// ── Rendering ──
+
+function setActive(btn) {
+    document.querySelectorAll('.btn-grid button').forEach(b => { b.classList.remove('active'); b.disabled = false; });
+    if (btn) { btn.classList.add('active'); btn.disabled = true; }
+}
+
+async function load(endpoint, scenarioKey, btn) {
+    setActive(btn);
+    resultsDiv.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+        const res = await fetch(BASE + endpoint);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const meta = SCENARIOS[scenarioKey];
+        resultsDiv.innerHTML = renderScenario(meta, data);
+    } catch (e) {
+        resultsDiv.innerHTML = `<div class="error">Failed to fetch: ${e.message}. Is the server running on localhost:8080?</div>`;
+    }
+    if (btn) btn.disabled = false;
+}
+
+async function loadAll(btn) {
+    setActive(btn);
+    resultsDiv.innerHTML = '<div class="loading">Running all scenarios...</div>';
+    try {
+        const res = await fetch(BASE + 'all');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const mapping = [
+            ['1_oneToMany_department_courses', 'departments'],
+            ['2_manyToOne_course_department', 'courses'],
+            ['3_dual_manyToOne_review', 'reviews'],
+            ['4_manyToMany_student_courses', 'students'],
+            ['5_multiple_associations', 'deptFull'],
+            ['7_fetch_vs_load_graph', 'fetchLoad'],
+            ['6_nested_entitygraph', 'nested'],
+        ];
+
+        let html = '';
+        for (const [dataKey, scenarioKey] of mapping) {
+            const apiData = data[dataKey];
+            if (!apiData) continue;
+            const meta = SCENARIOS[scenarioKey];
+            // Wrap single QueryStatsDto in object
+            const normalized = apiData.scenario ? { single: apiData } : apiData;
+            html += renderScenario(meta, normalized);
+        }
+        resultsDiv.innerHTML = html;
+    } catch (e) {
+        resultsDiv.innerHTML = `<div class="error">Failed to fetch: ${e.message}. Is the server running on localhost:8080?</div>`;
+    }
+    if (btn) btn.disabled = false;
+}
+
+function renderScenario(meta, apiData) {
+    // apiData might be a single QueryStatsDto or a map of them
+    const normalized = apiData.scenario ? { single: apiData } : apiData;
+    const entries = Object.entries(normalized);
+    const colClass = entries.length === 1 ? 'single' : entries.length >= 3 ? 'triple' : '';
+
+    let html = `<div class="scenario-block">`;
+    html += `<div class="scenario-header">${meta.title}</div>`;
+
+    // Entity code
+    html += `<div class="entity-section">
+        <h4>Entity Mapping</h4>
+        <pre>${meta.entity}</pre>
+    </div>`;
+
+    // Cards
+    html += `<div class="side-by-side ${colClass}">`;
+    for (const [key, stats] of entries) {
+        const cardMeta = meta.cards[key] || {};
+        const isProblem = key.includes('problem') || key.includes('nplus1');
+        const isSolution = key.includes('solution') || key.includes('entitygraph') || key.includes('join_fetch');
+        const cardClass = isProblem ? 'problem' : isSolution ? 'solution' : 'neutral';
+        const valClass = isProblem ? 'bad' : isSolution ? 'good' : 'info';
+
+        html += `<div class="card ${cardClass}">
+            <div class="card-label">${key.replace(/_/g, ' ')}</div>
+            <div class="card-title">${stats.scenario || ''}</div>
+            <div class="card-desc">${stats.description || ''}</div>
+            <div class="stats-row">
+                <div class="stat">
+                    <div class="val ${valClass}">${stats.queryCount}</div>
+                    <div class="lbl">Queries</div>
+                </div>
+                <div class="stat">
+                    <div class="val ${valClass}">${stats.executionTimeMs}ms</div>
+                    <div class="lbl">Time</div>
+                </div>
+            </div>
+            <div class="result-count">${Array.isArray(stats.results) ? stats.results.length + ' results returned' : ''}</div>
+            <div class="code-section">`;
+
+        if (cardMeta.repo) {
+            html += `<details>
+                <summary>Repository Code</summary>
+                <pre>${cardMeta.repo}</pre>
+            </details>`;
+        }
+        if (cardMeta.service) {
+            html += `<details>
+                <summary>Service Code (trigger)</summary>
+                <pre>${cardMeta.service}</pre>
+            </details>`;
+        }
+        if (cardMeta.sql) {
+            html += `<details open>
+                <summary>Generated SQL</summary>
+                <pre>${cardMeta.sql}</pre>
+            </details>`;
+        }
+
+        html += `</div></div>`;
+    }
+    html += `</div></div>`;
+    return html;
+}
+</script>
+</body>
+</html>
